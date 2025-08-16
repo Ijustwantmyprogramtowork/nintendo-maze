@@ -15,11 +15,6 @@ class Action(enum.IntEnum):
     LEFT = 3
     GATHER = 4
 
-# Assume the following enums are defined in the environment
-# class Direction(enum.IntEnum): UP = 0; RIGHT = 1; DOWN = 2; LEFT = 3
-# class Action(enum.IntEnum): UP = 0; RIGHT = 1; DOWN = 2; LEFT = 3; GATHER = 4
-# class Cell(enum.IntEnum): EMPTY = 0; WALL = 1
-
 
 # Assume the following enums are defined in the environment
 # class Direction(enum.IntEnum): UP = 0; RIGHT = 1; DOWN = 2; LEFT = 3
@@ -93,6 +88,7 @@ class Wallace:
     def _make_new_plan(self):
         """The core decision-making logic, using A* for robust exploration."""
         if self.search_mode == 'FOCUSED':
+            print("it's in focused")
             _, plan, _ = self._run_astar_search(goal_heuristic='focused')
             if plan and len(plan) <= self.FOCUSED_SEARCH_RADIUS:
                 self.action_plan = plan
@@ -161,7 +157,7 @@ class Wallace:
         if self.current_pos not in self.maze_map: self.maze_map[self.current_pos] = {}
         self.maze_map[self.current_pos].update({'type': 'empty', 'visited': True, 'has_gold': has_gold})
         if has_gold and self.current_pos not in self.gold_locations:
-            path_to_gold = self._find_path(self.start_pos, self.current_pos)
+            path_to_gold = self._find_path(self.start_pos, self.current_pos)  
             if path_to_gold is not None: self.gold_locations[self.current_pos] = {'visits': 0, 'value': 0, 'path_cost': len(path_to_gold), 'path': path_to_gold}
         neighbors = {(y - 1, x): top, (y + 1, x): bottom, (y, x - 1): left, (y, x + 1): right}
         for pos, cell_type in neighbors.items():

@@ -12,7 +12,7 @@ LIMITED_TIME = 5*60
 
 def test_wallace():
     from maze import create_maze
-    from solution import Wallace
+    from solution_mab_simple import BanditWallace as Wallace
 
     def run(env, wallace):
         n_played_steps = 1234
@@ -23,8 +23,9 @@ def test_wallace():
         start = time.perf_counter()
         for _ in range(n_played_steps):
             if done:
-                # print(info)
+                print("it's done")
                 action = wallace.act(obs, gold, done)
+                print("ACTION WHEN DONE IS ", action)
                 assert action is None
                 obs = env.reset()
                 gold = 0.
@@ -39,11 +40,12 @@ def test_wallace():
         print(f"Total golds gathered in {LIMITED_TIME/60} minutes: {golds} \nAnd Wallace walked {steps} steps")
 
 
-    for exp_idx in range(2):
+    for exp_idx in range(1):
         env = create_maze(video_prefix="./video_%d"%exp_idx, overwrite_every_episode=False, fps=4)
         wallace = Wallace()
         run(env, wallace)
         env.close()
 
 if __name__ == "__main__":
+    print("BROAD EQUALS GREEN AND FOCUSED EQUALS VIOLET")
     test_wallace()

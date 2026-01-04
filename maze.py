@@ -226,9 +226,10 @@ class Maze:
                     frame[pixel_location[0], pixel_location[1]] = list(pixel_color)
 
         # player's current fog of war
-        frame[self.y-1:self.y+2, self.x-1:self.x+2] = self.maze_frame[self.y-1:self.y+2, self.x-1:self.x+2] + Maze.NEIGHBOOR_ADD_COLOR
+        # frame[self.y-1:self.y+2, self.x-1:self.x+2] = self.maze_frame[self.y-1:self.y+2, self.x-1:self.x+2] + Maze.NEIGHBOOR_ADD_COLOR
         # player's current location
-        frame[self.y,self.x,:] = [0,0,200]
+        #ENLEVER LE COM 
+        # frame[self.y,self.x,:] = [0,0,200]
         
         return frame
     
@@ -263,6 +264,8 @@ def procedural_maze(h,w,ngolds):
         cy = np.random.randint(0,h)
         cx = np.random.randint(0,w)
         ntries = 500
+
+        
         itry = 0
         igold = 0
         while (itry < ntries) and (igold < ngolds):

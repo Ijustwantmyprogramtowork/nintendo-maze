@@ -1,6 +1,5 @@
-import enum
 import numpy as np
-from collections import defaultdict
+import enum
 import heapq
 import collections
 
@@ -16,20 +15,7 @@ class Action(enum.IntEnum):
     GATHER = 4
 
 
-# Assume the following enums are defined in the environment
-# class Direction(enum.IntEnum): UP = 0; RIGHT = 1; DOWN = 2; LEFT = 3
-# class Action(enum.IntEnum): UP = 0; RIGHT = 1; DOWN = 2; LEFT = 3; GATHER = 4
-# class Cell(enum.IntEnum): EMPTY = 0; WALL = 1
-
-
-class Wallace:
-    """
-    This definitive version of Wallace uses the A* (A-star) search algorithm
-    to robustly guide its exploration. This unifies pathfinding with target
-    selection, permanently solving the "stuck" loop issue while still
-    intelligently using the "geometric center" and "circling" heuristics.
-    """
-
+class BanditWallace():
     def __init__(self):
         # --- Core State & Planning ---
         self.action_plan = []
@@ -48,69 +34,43 @@ class Wallace:
         self.total_gathers = 0
 
         # --- Hyperparameters & Helpers ---
-        self.UCB_C = 3.0
+        self.UCB_C = 2.0
         self.OPTIMISTIC_EXPLORATION_VALUE = 10.0
         self.action_to_dxy = {Action.UP: (-1, 0), Action.DOWN: (1, 0), Action.LEFT: (0, -1), Action.RIGHT: (0, 1)}
+        self.phase="EXPLORE" # Or EXPLOIT
+        self.MIN_GOLDS=4
+        self.current_target=None
 
     def act(self, obs, gold_received, done):
         """The main function called at each step."""
         self._update_map(obs)
-
-        if self.maze_map.get(self.current_pos, {}).get('has_gold', False):
-            # if self.current_pos not in self.gold_locations:
-            if self.current_pos in self.gold_locations and self.gold_locations[self.current_pos]['visits']==0:
-                self._initiate_focused_search()
-
         if done:
             self._process_reward(gold_received)
             self.action_plan = []; self.search_mode = 'BROAD'
             return None
+        if len(self.gold_locations.keys())>=self.MIN_GOLDS:
+            self.phase="EXPLOIT"
+            #Forcing Gathering to start mab
+            action=Action.GATHER
+            return action
 
-        if not self.action_plan: self._make_new_plan()
+        if self.phase=="EXPLOIT" and self.current_target is not None:
+            #Fllow commited plan and not redo it if problem
+            pass
+        elif not self.action_plan: 
+            self._make_new_plan()
         
 
         if self.action_plan:
             action = self.action_plan.pop(0)
-            if action == Action.GATHER: self.last_target_pos = self.current_pos
+            if action == Action.GATHER and self.phase=="EXPLOIT": 
+                self.last_target_pos = self.current_pos
+            elif action==Action.GATHER and self.phase=="EXPLORE":
+                return np.random.choice(list(self.action_to_dxy.keys()))
             return action
         else:
             return np.random.choice(list(self.action_to_dxy.keys()))
-
-    def _initiate_focused_search(self):
-        """Triggers the 'circling' behavior if not already focused on this spot."""
-        if self.focused_search_origin != self.current_pos:
-            self.search_mode = 'FOCUSED'
-            self.action_plan = []
-            self.focused_search_origin = self.current_pos
-            # Since we just arrived, we mark the origin as "visited" for the purpose of the focused search
-            if self.focused_search_origin not in self.maze_map: self.maze_map[self.focused_search_origin] = {}
-            self.maze_map[self.focused_search_origin]['visited_by_focused_search'] = True
-
-
-    def _make_new_plan(self):
-        """The core decision-making logic, using A* for robust exploration."""
-        if self.search_mode == 'FOCUSED':
-            _, plan, _ = self._run_astar_search(goal_heuristic='focused')
-            if plan and len(plan) <= self.FOCUSED_SEARCH_RADIUS:
-                print("the plan chosen is :", plan )
-                self.action_plan = plan
-                return
-            else:
-                self.search_mode = 'BROAD'
-
-        exploit_target, exploit_score = self._evaluate_exploitation()
-        explore_target, explore_plan, explore_score = self._run_astar_search(goal_heuristic='broad')
-
-        if exploit_score >= explore_score and exploit_target is not None:
-            print("looking for gold")
-            self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
-        elif explore_plan:
-            self.action_plan = explore_plan
-        elif exploit_target is not None:
-            self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
-        else:
-            self.action_plan = [np.random.choice(list(self.action_to_dxy.keys()))]
-
+    
     def _run_astar_search(self, goal_heuristic):
         """
         Performs an A* search to find the best reachable, unvisited cell.
@@ -153,44 +113,77 @@ class Wallace:
                         priority = new_cost + heuristic(neighbor)
                         heapq.heappush(pq, (priority, new_cost, path + [action], neighbor))
         return None, None, -float('inf')
-
-    # --- Other helper functions (unchanged) ---
+    
+    def _make_new_plan(self):
+        exploit_target, exploit_score = self._evaluate_exploitation()
+        explore_target, explore_plan, explore_score = self._run_astar_search(goal_heuristic='broad')
+        if explore_plan and self.phase=="EXPLORE":
+            self.action_plan=explore_plan
+        elif exploit_target is not None and self.phase=="EXPLOIT":
+            self.current_target=exploit_target
+            self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
+    
+    def _initiate_focused_search(self):
+        """Triggers the 'circling' behavior if not already focused on this spot."""
+        if self.focused_search_origin != self.current_pos:
+            self.search_mode = 'FOCUSED'
+            self.action_plan = []
+            self.focused_search_origin = self.current_pos
+            # Since we just arrived, we mark the origin as "visited" for the purpose of the focused search
+            if self.focused_search_origin not in self.maze_map: self.maze_map[self.focused_search_origin] = {}
+            self.maze_map[self.focused_search_origin]['visited_by_focused_search'] = True
     def _update_map(self, obs):
-        y, x, top, left, right, bottom, has_gold = obs; self.current_pos = (y, x)
-        if self.current_pos not in self.maze_map: self.maze_map[self.current_pos] = {}
+        y, x, top, left, right, bottom, has_gold = obs
+        #to remove
+        self.current_pos = (y, x)
+        if self.current_pos not in self.maze_map: 
+            self.maze_map[self.current_pos] = {}
         self.maze_map[self.current_pos].update({'type': 'empty', 'visited': True, 'has_gold': has_gold})
         if has_gold and self.current_pos not in self.gold_locations:
             path_to_gold = self._find_path(self.start_pos, self.current_pos)  
-            if path_to_gold is not None: self.gold_locations[self.current_pos] = {'visits': 0, 'value': 0, 'path_cost': len(path_to_gold), 'path': path_to_gold}
+            if path_to_gold is not None: 
+                self.gold_locations[self.current_pos] = {'visits': 0, 'value': 0, 'path_cost': len(path_to_gold), 'path': path_to_gold}
         neighbors = {(y - 1, x): top, (y + 1, x): bottom, (y, x - 1): left, (y, x + 1): right}
         for pos, cell_type in neighbors.items():
-            if pos not in self.maze_map: self.maze_map[pos] = {'type': 'wall' if cell_type == Cell.WALL else 'empty', 'visited': False}
+            if pos not in self.maze_map:
+                self.maze_map[pos] = {'type': 'wall' if cell_type == Cell.WALL else 'empty', 'visited': False}
     def _process_reward(self, gold_received):
         if self.last_target_pos and self.last_target_pos in self.gold_locations:
             loc_data = self.gold_locations[self.last_target_pos]
             loc_data['value'] = (loc_data['value'] * loc_data['visits'] + gold_received) / (loc_data['visits'] + 1)
             loc_data['visits'] += 1; self.total_gathers += 1
         self.last_target_pos = None
+        self.current_target = None
+    def _find_path(self, start_pos, end_pos):
+        q=collections.deque([(start_pos, [])])
+        visited={start_pos}
+        while q:
+            (y,x), path=q.popleft()
+            if (y,x)==end_pos:
+                return path
+            for action, (dy,dx) in self.action_to_dxy.items():
+                neighbour=(y+dy, x+dx)
+                if neighbour not in visited and self.maze_map.get(neighbour, {}).get('type')!="wall":
+                    q.append((neighbour, path+[action]))
+                    visited.add(neighbour)
+            return None
+        
     def _evaluate_exploitation(self):
-        if not self.gold_locations: return None, -float('inf')
+        if not self.gold_locations:
+            return None, -float('inf')
         best_score, best_target = -float('inf'), None
         for pos, data in self.gold_locations.items():
             score = float('inf') if data['visits'] == 0 else (data['value'] + self.UCB_C * np.sqrt(np.log(self.total_gathers + 1) / data['visits'])) / (data['path_cost'] + 1)
-            if score > best_score: best_score, best_target = score, pos
+            if score > best_score:
+                best_score, best_target = score, pos
         if best_score == float('inf'):
             unvisited = {p: d for p, d in self.gold_locations.items() if d['visits'] == 0}
             best_target = min(unvisited, key=lambda p: unvisited[p]['path_cost'])
         return best_target, best_score
-    def _find_path(self, start_pos, end_pos):
-        q = collections.deque([(start_pos, [])]); visited = {start_pos}
-        while q:
-            (y, x), path = q.popleft()
-            if (y, x) == end_pos: return path
-            for action, (dy, dx) in self.action_to_dxy.items():
-                neighbor_pos = (y + dy, x + dx)
-                if neighbor_pos not in visited and self.maze_map.get(neighbor_pos, {}).get('type') != 'wall':
-                    visited.add(neighbor_pos); q.append((neighbor_pos, path + [action]))
-        return None
+
+
+
+    
     def get_custom_render_infos(self):
         render_list = []; [render_list.append((pos, (255, 0, 0))) for pos in self.gold_locations]
         if self.search_mode=="BROAD":
@@ -203,3 +196,10 @@ class Wallace:
             for action in self.action_plan:
                 if action != Action.GATHER: dy, dx = self.action_to_dxy[action]; path_pos = (path_pos[0] + dy, path_pos[1] + dx); render_list.append((path_pos, (0, 255, 255)))
         return render_list
+
+
+    
+
+            
+
+

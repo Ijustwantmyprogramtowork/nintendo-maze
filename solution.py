@@ -92,7 +92,6 @@ class Wallace:
         if self.search_mode == 'FOCUSED':
             _, plan, _ = self._run_astar_search(goal_heuristic='focused')
             if plan and len(plan) <= self.FOCUSED_SEARCH_RADIUS:
-                print("the plan chosen is :", plan )
                 self.action_plan = plan
                 return
             else:
@@ -102,7 +101,6 @@ class Wallace:
         explore_target, explore_plan, explore_score = self._run_astar_search(goal_heuristic='broad')
 
         if exploit_score >= explore_score and exploit_target is not None:
-            print("looking for gold")
             self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
         elif explore_plan:
             self.action_plan = explore_plan

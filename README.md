@@ -51,6 +51,9 @@ Instead, I transitioned to a **Multi-Armed Bandit (MAB)** formulation:
 - Selection is done using **UCB**
 - Rewards update arm statistics (mean & visit count)
 
+**Results**:  
+- Less variable but results are less impressive. ( mean of 5 golds in 1234 steps )
+
 This cleanly separates:
 - **Spatial planning** → A*
 - **Decision-making under uncertainty** → MAB

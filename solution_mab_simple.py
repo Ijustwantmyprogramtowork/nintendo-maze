@@ -40,18 +40,21 @@ class BanditWallace():
         self.phase="EXPLORE" # Or EXPLOIT
         self.MIN_GOLDS=4
         self.current_target=None
+        self.just_turned_exploit=False
 
     def act(self, obs, gold_received, done):
         """The main function called at each step."""
         self._update_map(obs)
         if done:
             self._process_reward(gold_received)
-            self.action_plan = []; self.search_mode = 'BROAD'
+            self.action_plan = []
+            self.search_mode = 'BROAD'
             return None
-        if len(self.gold_locations.keys())>=self.MIN_GOLDS:
+        if len(self.gold_locations.keys())>=self.MIN_GOLDS and self.just_turned_exploit==False:
             self.phase="EXPLOIT"
             #Forcing Gathering to start mab
             action=Action.GATHER
+            self.just_turned_exploit=True
             return action
 
         if self.phase=="EXPLOIT" and self.current_target is not None:
@@ -71,18 +74,15 @@ class BanditWallace():
         else:
             return np.random.choice(list(self.action_to_dxy.keys()))
     
-    def _run_astar_search(self, goal_heuristic):
+    def _run_astar_search(self):
         """
         Performs an A* search to find the best reachable, unvisited cell.
         The heuristic guides the search towards the desired area.
         """
-        if goal_heuristic == 'broad':
-            if not self.gold_locations: goal_center = self.current_pos # Default search goal
-            else:
-                y_coords = [p[0] for p in self.gold_locations.keys()]; x_coords = [p[1] for p in self.gold_locations.keys()]
-                goal_center = (np.mean(y_coords), np.mean(x_coords))
-        elif goal_heuristic == 'focused':
-            goal_center = self.focused_search_origin
+        if not self.gold_locations: goal_center = self.current_pos # Default search goal
+        else:
+            y_coords = [p[0] for p in self.gold_locations.keys()]; x_coords = [p[1] for p in self.gold_locations.keys()]
+            goal_center = (np.mean(y_coords), np.mean(x_coords))
         
         def heuristic(pos): return abs(pos[0] - goal_center[0]) + abs(pos[1] - goal_center[1])
 
@@ -94,13 +94,8 @@ class BanditWallace():
             if cost > visited_costs[pos]: continue
 
             is_unvisited_maze_cell = not self.maze_map.get(pos, {}).get('visited', False)
-            if goal_heuristic == 'focused':
-                is_unvisited_maze_cell = not self.maze_map.get(pos, {}).get('visited_by_focused_search', False)
             
             if is_unvisited_maze_cell:
-                if goal_heuristic == 'focused':
-                    if pos not in self.maze_map: self.maze_map[pos] = {}
-                    self.maze_map[pos]['visited_by_focused_search'] = True
                 score = self.OPTIMISTIC_EXPLORATION_VALUE / (len(path) + 1) if path else float('inf')
                 return pos, path, score
 
@@ -116,25 +111,15 @@ class BanditWallace():
     
     def _make_new_plan(self):
         exploit_target, exploit_score = self._evaluate_exploitation()
-        explore_target, explore_plan, explore_score = self._run_astar_search(goal_heuristic='broad')
+        explore_target, explore_plan, explore_score = self._run_astar_search()
         if explore_plan and self.phase=="EXPLORE":
             self.action_plan=explore_plan
         elif exploit_target is not None and self.phase=="EXPLOIT":
             self.current_target=exploit_target
             self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
     
-    def _initiate_focused_search(self):
-        """Triggers the 'circling' behavior if not already focused on this spot."""
-        if self.focused_search_origin != self.current_pos:
-            self.search_mode = 'FOCUSED'
-            self.action_plan = []
-            self.focused_search_origin = self.current_pos
-            # Since we just arrived, we mark the origin as "visited" for the purpose of the focused search
-            if self.focused_search_origin not in self.maze_map: self.maze_map[self.focused_search_origin] = {}
-            self.maze_map[self.focused_search_origin]['visited_by_focused_search'] = True
     def _update_map(self, obs):
         y, x, top, left, right, bottom, has_gold = obs
-        #to remove
         self.current_pos = (y, x)
         if self.current_pos not in self.maze_map: 
             self.maze_map[self.current_pos] = {}
@@ -143,6 +128,7 @@ class BanditWallace():
             path_to_gold = self._find_path(self.start_pos, self.current_pos)  
             if path_to_gold is not None: 
                 self.gold_locations[self.current_pos] = {'visits': 0, 'value': 0, 'path_cost': len(path_to_gold), 'path': path_to_gold}
+        
         neighbors = {(y - 1, x): top, (y + 1, x): bottom, (y, x - 1): left, (y, x + 1): right}
         for pos, cell_type in neighbors.items():
             if pos not in self.maze_map:
@@ -166,7 +152,7 @@ class BanditWallace():
                 if neighbour not in visited and self.maze_map.get(neighbour, {}).get('type')!="wall":
                     q.append((neighbour, path+[action]))
                     visited.add(neighbour)
-            return None
+        return None
         
     def _evaluate_exploitation(self):
         if not self.gold_locations:
@@ -186,15 +172,15 @@ class BanditWallace():
     
     def get_custom_render_infos(self):
         render_list = []; [render_list.append((pos, (255, 0, 0))) for pos in self.gold_locations]
-        if self.search_mode=="BROAD":
-            pixel_color=(0,125,125)
-        elif self.search_mode=="FOCUSED":
-            pixel_color=(125,125,0)
+        pixel_color=(0,125,125)
         render_list.append((self.current_pos, pixel_color))
         if self.action_plan:
             path_pos = self.current_pos
             for action in self.action_plan:
-                if action != Action.GATHER: dy, dx = self.action_to_dxy[action]; path_pos = (path_pos[0] + dy, path_pos[1] + dx); render_list.append((path_pos, (0, 255, 255)))
+                if action != Action.GATHER:
+                     dy, dx = self.action_to_dxy[action]
+                     path_pos = (path_pos[0] + dy, path_pos[1] + dx)
+                     render_list.append((path_pos, (0, 255, 255)))
         return render_list
 
 

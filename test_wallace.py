@@ -23,9 +23,7 @@ def test_wallace():
         start = time.perf_counter()
         for _ in range(n_played_steps):
             if done:
-                print("it's done")
                 action = wallace.act(obs, gold, done)
-                print("ACTION WHEN DONE IS ", action)
                 assert action is None
                 obs = env.reset()
                 gold = 0.
@@ -38,13 +36,16 @@ def test_wallace():
         golds = info['monitor.tot_golds']
         steps = info['monitor.tot_steps']
         print(f"Total golds gathered in {LIMITED_TIME/60} minutes: {golds} \nAnd Wallace walked {steps} steps")
+        return golds
 
+    mean_golds=0
 
-    for exp_idx in range(1):
+    for exp_idx in range(5):
         env = create_maze(video_prefix="./video_%d"%exp_idx, overwrite_every_episode=False, fps=4)
         wallace = Wallace()
-        run(env, wallace)
+        mean_golds+=run(env, wallace)
         env.close()
+    print("mean for 5 runs of golds=", mean_golds/5)
 
 if __name__ == "__main__":
     print("BROAD EQUALS GREEN AND FOCUSED EQUALS VIOLET")

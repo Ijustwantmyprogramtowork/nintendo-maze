@@ -23,7 +23,6 @@ class BanditWallace():
         self.start_pos = (3, 3)
 
         # --- Search Mode & Focused Search State ---
-        self.search_mode = 'BROAD'
         self.focused_search_origin = None
         self.FOCUSED_SEARCH_RADIUS = 4
 
@@ -41,6 +40,7 @@ class BanditWallace():
         self.MIN_GOLDS=4
         self.current_target=None
         self.just_turned_exploit=False
+        self.las_pos=None
 
     def act(self, obs, gold_received, done):
         """The main function called at each step."""
@@ -57,20 +57,36 @@ class BanditWallace():
             self.just_turned_exploit=True
             return action
 
-        if self.phase=="EXPLOIT" and self.current_target is not None:
-            #Fllow commited plan and not redo it if problem
-            pass
+        # if self.phase=="EXPLOIT" and self.current_target is not None:
+        #     #Fllow commited plan and not redo it if problem
+        #     pass
         elif not self.action_plan: 
             self._make_new_plan()
+
+        if self.las_pos==self.current_pos and action is not None :
+            if action!= Action.GATHER:
+                print('ok chatgpt is right')
         
 
+
+
         if self.action_plan:
+            # Verrify we are stuck and not on gold
+            if self.las_pos==self.current_pos and self.current_pos not in self.gold_locations.keys() :
+                self.action_plan=[]
+                self._make_new_plan()
+                if self.action_plan==[]:
+                    return np.random.choice(self.action_to_dxy.keys())
             action = self.action_plan.pop(0)
+            self.las_pos=self.current_pos
             if action == Action.GATHER and self.phase=="EXPLOIT": 
                 self.last_target_pos = self.current_pos
             elif action==Action.GATHER and self.phase=="EXPLORE":
                 return np.random.choice(list(self.action_to_dxy.keys()))
+            elif action==Action.GATHER and self.current_pos not in self.gold_locations.keys():
+                return np.random.choice(list(self.action_to_dxy.keys()))
             return action
+
         else:
             return np.random.choice(list(self.action_to_dxy.keys()))
     
@@ -116,7 +132,8 @@ class BanditWallace():
             self.action_plan=explore_plan
         elif exploit_target is not None and self.phase=="EXPLOIT":
             self.current_target=exploit_target
-            self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
+            # self.action_plan = list(self.gold_locations[exploit_target]['path']) + [Action.GATHER]
+            self.action_plan=self._find_path(self.current_pos, exploit_target ) + [Action.GATHER]
     
     def _update_map(self, obs):
         y, x, top, left, right, bottom, has_gold = obs

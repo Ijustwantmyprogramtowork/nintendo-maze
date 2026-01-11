@@ -50,9 +50,14 @@ Instead, I transitioned to a **Multi-Armed Bandit (MAB)** formulation:
 - Each gold source is treated as a **bandit arm**
 - Selection is done using **UCB**
 - Rewards update arm statistics (mean & visit count)
+We realized that the initial solution had an issue in the way the plan was handled: the agent did not correctly take walls into account, which could lead it to repeatedly move into walls and become stuck. This problem was fixed in the latest version of the code.
 
-**Results**:  
-- Less variable but results are less impressive. ( mean of 5 golds in 1234 steps )
+We also noticed that the agent was not strictly limited to finding only four gold pieces and could continue discovering additional gold during the exploit phase. This behavior turned out not to be a drawback. On the contrary, the agent tends to collect gold that is close to the starting position or located in clusters, without wasting time on further exploration using A*, which is the most time-consuming and greedy component of the algorithm. As such, this behavior complements the already constructed bandit arms well. Even though it was not initially intended, we decided to keep this feature.
+
+**Results**  
+- More efficient overall behavior with impressive results regardless of maze size  
+- Mean gold collected over 5 runs: **2535.2996326139883**
+
 
 This cleanly separates:
 - **Spatial planning** → A*
